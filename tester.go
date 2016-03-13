@@ -2,22 +2,97 @@ package main
 
 import (
 	"bytes"
-	"errors"
 	"log"
-	"net/http"
 	"os"
 	"os/exec"
 	"strings"
 	"text/template"
+	"time"
+
+	"golang.org/x/net/context"
 
 	"github.com/coreos/etcd/client"
 )
 
+var checks = make(map[string]chan bool)
+
 type Test struct {
 	Timeout       int
+	Interval      time.Duration
 	Test          string
-	Actions       []string
 	CommandFailed string `yaml:"command_on_fail"`
+	CommandOK     string `yaml:"command_on_success"`
+}
+
+// Init will parse a key recursivally to initialize heartbeat.
+func (test Test) Init(key string) {
+	// initialize a watcher
+	log.Println("Initialize watcher on", key)
+	node, err := KAPI.Get(context.Background(), key, &client.GetOptions{
+		Recursive: true,
+	})
+	if err == nil {
+		if node.Node.Dir {
+			for _, n := range node.Node.Nodes {
+				test.Init(n.Key)
+			}
+			return
+		}
+		stop := make(chan bool)
+		checks[node.Node.Key] = stop
+		go checkup(&test, node, stop)
+	}
+}
+
+// Watch begins to watch a key and launches tests when a key moves.
+func (test Test) Watch(key string) {
+	log.Println("Watching key", key)
+	test.Init(key)
+	watcher := KAPI.Watcher(key, &client.WatcherOptions{
+		Recursive: true,
+	})
+
+	for {
+		node, err := watcher.Next(context.Background())
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		log.Println("Watcher", node.Node.Key, node.Node.Value, node.Action)
+
+		if node.Action != "delete" {
+			// add a checker for this key
+			if quit, exists := checks[node.Node.Key]; exists {
+				// a watcher exists, maybe the value changed, so we remove
+				// the current check by stopping its goroutine
+				// and we will create another
+				quit <- true
+			}
+
+			// prepare and start a check
+			stop := make(chan bool)
+			checks[node.Node.Key] = stop
+			go checkup(&test, node, stop)
+		} else {
+			// node is deleted, so stop checks
+			if stop, exists := checks[node.Node.Key]; exists {
+				stop <- true
+				delete(checks, node.Node.Key)
+			}
+		}
+	}
+}
+
+// checkup makes periodical test
+func checkup(test *Test, node *client.Response, stop chan bool) {
+	for {
+		select {
+		case <-stop:
+			return
+		case <-time.Tick(test.Interval * time.Second):
+			MakeTest(test, node)
+		}
+	}
 }
 
 // getCommand returns a parsed command from configuration.
@@ -44,51 +119,44 @@ func getCommand(cmd string, node *client.Response) (*exec.Cmd, error) {
 }
 
 // MakeTest launches test.
-func MakeTest(w *Watcher, node *client.Response) {
-	t := &w.test
+func MakeTest(test *Test, node *client.Response) {
 	var err error
 
-	switch t.Test {
-	case "http":
-		err = makeHttpTest(t, node)
-	case "connect":
-		makeSocketTest(t, node)
+	// find a test and execute it
+	if fnc, ok := TESTS[test.Test]; ok {
+		fnc(test, node)
+	} else {
+		log.Println(test.Test, "is not a known test")
+		return
 	}
 
 	if err != nil {
 		//w.kapi.Delete(context.Background(), node.Node.Key, nil)
-		if t.CommandFailed == "" {
+		if test.CommandFailed == "" {
 			log.Println("No command for failed state specified")
 			return
 		}
-		// create a parsed command
-		cmd, err := getCommand(t.CommandFailed, node)
-		if err != nil {
-			log.Println(err)
+		execCommand(test.CommandFailed, node)
+	} else {
+		if test.CommandOK == "" {
 			return
 		}
-		// Use stdin and stdout to see the result
-		cmd.Stdin = os.Stdin
-		cmd.Stdout = os.Stdout
-		// launch
-		if err := cmd.Run(); err != nil {
-			log.Println("Run", err)
-		}
+		execCommand(test.CommandOK, node)
 	}
 }
 
-func makeHttpTest(t *Test, node *client.Response) error {
-
-	log.Println("Make a HTTP test")
-	resp, err := http.Get(node.Node.Value)
-	if err != nil || resp.StatusCode > 399 {
-		log.Println("HTTP failed, remove key")
-		return errors.New("Failed")
+func execCommand(command string, node *client.Response) {
+	// create a parsed command
+	cmd, err := getCommand(command, node)
+	if err != nil {
+		log.Println(err)
+		return
 	}
-
-	return nil
-}
-
-func makeSocketTest(t *Test, node *client.Response) {
-	log.Println("Make a Socket test")
+	// Use stdin and stdout to see the result
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	// launch
+	if err := cmd.Run(); err != nil {
+		log.Println("Run", err)
+	}
 }

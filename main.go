@@ -23,13 +23,10 @@ func main() {
 		log.Fatal(err, c)
 	}
 
-	watchers := make([]Watcher, 0)
 	KAPI = client.NewKeysAPI(c)
 
-	for key, conf := range cfg.Keys {
-		w := Watcher{conf}
-		watchers = append(watchers, w)
-		go w.Watch(key)
+	for key, test := range cfg.Keys {
+		go test.Watch(key)
 	}
 
 	<-make(chan bool)
