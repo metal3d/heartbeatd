@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"log"
 	"os"
 	"os/exec"
@@ -14,8 +16,27 @@ import (
 	"github.com/coreos/etcd/client"
 )
 
-var checks = make(map[string]chan bool)
+type routine struct {
+	key  string
+	stop chan bool
+}
 
+var checks = map[string]routine{}
+
+func newUUID() string {
+	u := make([]byte, 16)
+	_, err := rand.Read(u)
+	if err != nil {
+		return ""
+	}
+
+	u[8] = (u[8] | 0x80) & 0xBF // what does this do?
+	u[6] = (u[6] | 0x40) & 0x4F // what does this do?
+
+	return hex.EncodeToString(u)
+}
+
+// Test structure representing the yaml configuration "key".
 type Test struct {
 	Timeout       int
 	Interval      time.Duration
@@ -39,8 +60,8 @@ func (test Test) Init(key string) {
 			return
 		}
 		stop := make(chan bool)
-		checks[node.Node.Key] = stop
-		go checkup(&test, node, stop)
+		checks[newUUID()] = routine{node.Node.Key, stop}
+		checklist <- Check{&test, node, stop}
 	}
 }
 
@@ -62,35 +83,28 @@ func (test Test) Watch(key string) {
 
 		if node.Action != "delete" {
 			// add a checker for this key
-			if quit, exists := checks[node.Node.Key]; exists {
-				// a watcher exists, maybe the value changed, so we remove
-				// the current check by stopping its goroutine
-				// and we will create another
-				quit <- true
+
+			// remove old checkers because the key changed
+			for i, r := range checks {
+				if r.key == node.Node.Key {
+					r.stop <- true
+					delete(checks, i)
+				}
 			}
 
 			// prepare and start a check
 			stop := make(chan bool)
-			checks[node.Node.Key] = stop
-			go checkup(&test, node, stop)
+			checks[newUUID()] = routine{node.Node.Key, stop}
+			checklist <- Check{&test, node, stop}
 		} else {
 			// node is deleted, so stop checks
-			if stop, exists := checks[node.Node.Key]; exists {
-				stop <- true
-				delete(checks, node.Node.Key)
+			log.Println("DELETE", node)
+			for i, r := range checks {
+				if r.key == node.Node.Key {
+					r.stop <- true
+					delete(checks, i)
+				}
 			}
-		}
-	}
-}
-
-// checkup makes periodical test
-func checkup(test *Test, node *client.Response, stop chan bool) {
-	for {
-		select {
-		case <-stop:
-			return
-		case <-time.Tick(test.Interval * time.Second):
-			MakeTest(test, node)
 		}
 	}
 }
@@ -116,33 +130,6 @@ func getCommand(cmd string, node *client.Response) (*exec.Cmd, error) {
 	}
 
 	return exec.Command(args[0]), nil
-}
-
-// MakeTest launches test.
-func MakeTest(test *Test, node *client.Response) {
-	var err error
-
-	// find a test and execute it
-	if fnc, ok := TESTS[test.Test]; ok {
-		fnc(test, node)
-	} else {
-		log.Println(test.Test, "is not a known test")
-		return
-	}
-
-	if err != nil {
-		//w.kapi.Delete(context.Background(), node.Node.Key, nil)
-		if test.CommandFailed == "" {
-			log.Println("No command for failed state specified")
-			return
-		}
-		execCommand(test.CommandFailed, node)
-	} else {
-		if test.CommandOK == "" {
-			return
-		}
-		execCommand(test.CommandOK, node)
-	}
 }
 
 func execCommand(command string, node *client.Response) {

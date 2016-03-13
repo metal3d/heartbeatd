@@ -11,7 +11,7 @@ import (
 // makeHttpTest tries to get a http url.
 func makeHttpTest(test *Test, node *client.Response) error {
 
-	log.Println("Make a HTTP test")
+	log.Println("Make a HTTP test", node.Node.Value)
 	resp, err := http.Get(node.Node.Value)
 	if err != nil || resp.StatusCode > 399 {
 		log.Println("HTTP failed, remove key")
