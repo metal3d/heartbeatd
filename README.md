@@ -34,6 +34,16 @@ If the test is ok, "`command_on_success`" is executed. If not, "`command_on_fail
 
 The given example removes the key - that way, "`confd`" is alerted that a key is dropped and can execute is own templates.
 
+# Where to place config.yml ?
+
+Heartbeatd checks that files in that order:
+
+- `./config.yml`
+- `$HOME/.config/heartbeatd/config.yml`
+- `/etc/heartbeatd/config.yml`
+
+
+Heartbeatd will stop if none of these file is found.
 
 # Commands
 
