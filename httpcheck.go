@@ -11,10 +11,13 @@ import (
 // makeHttpTest tries to get a http url.
 func makeHttpTest(test *Test, node *client.Response) error {
 
-	log.Println("Make a HTTP test", node.Node.Value)
-	resp, err := http.Get(node.Node.Value)
+	value, err := test.parseValue(node)
+	if err != nil {
+		return err
+	}
+	log.Println("Make a HTTP test", value)
+	resp, err := http.Get(value)
 	if err != nil || resp.StatusCode > 399 {
-		log.Println("HTTP failed, remove key")
 		return errors.New("Failed")
 	}
 	defer resp.Body.Close()

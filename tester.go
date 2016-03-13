@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"log"
+	"strings"
+	"text/template"
 	"time"
 
 	"golang.org/x/net/context"
@@ -16,6 +19,7 @@ type Test struct {
 	Timeout       int
 	Interval      time.Duration
 	Test          string
+	Value         string
 	CommandFailed string `yaml:"command_on_fail"`
 	CommandOK     string `yaml:"command_on_success"`
 }
@@ -66,4 +70,22 @@ func (test Test) Watch(key string) {
 			checklist <- Check{&test, node, stop}
 		}
 	}
+}
+
+// parseValue returns the parsed config test value template.
+func (t Test) parseValue(node *client.Response) (string, error) {
+	value := t.Value
+	if len(strings.TrimSpace(value)) == 0 {
+		value = "{{.Value}}"
+	}
+	tpl, err := template.New("Value").Parse(value)
+	if err != nil {
+		log.Println("Parse value error", err)
+		return "", err
+	}
+
+	var b []byte
+	buff := bytes.NewBuffer(b)
+	err = tpl.Execute(buff, node.Node)
+	return buff.String(), err
 }
