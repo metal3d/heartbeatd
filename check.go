@@ -1,8 +1,13 @@
 package main
 
 import (
+	"bytes"
+	"html/template"
 	"log"
+	"os"
+	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/coreos/etcd/client"
@@ -56,6 +61,45 @@ func (c Check) makeTest() {
 	}
 }
 
+// getCommand returns a parsed command from configuration.
+func getCommand(cmd string, node *client.Response) (*exec.Cmd, error) {
+
+	tpl, err := template.New("Cmd").Parse(cmd)
+	if err != nil {
+		return nil, err
+	}
+
+	var b []byte
+	buff := bytes.NewBuffer(b)
+	if err := tpl.Execute(buff, node.Node); err != nil {
+		return nil, err
+	}
+
+	args := strings.Split(buff.String(), " ")
+
+	if len(args) > 0 {
+		return exec.Command(args[0], args[1:]...), nil
+	}
+
+	return exec.Command(args[0]), nil
+}
+
+func execCommand(command string, node *client.Response) {
+	// create a parsed command
+	cmd, err := getCommand(command, node)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	// Use stdin and stdout to see the result
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	// launch
+	if err := cmd.Run(); err != nil {
+		log.Println("Run", err)
+	}
+}
+
 // initialize the parallels routines
 func setParallel(size int) {
 	checklist = make(chan Check, size)
@@ -64,6 +108,7 @@ func setParallel(size int) {
 	for i := 0; i < size; i++ {
 		go func() {
 			for check := range checklist {
+				checks[check.node.Node.Key] = check.stop
 				check.up()
 			}
 		}()

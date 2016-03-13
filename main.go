@@ -35,14 +35,5 @@ func main() {
 	for key, test := range cfg.Keys {
 		go test.Watch(key)
 	}
-
-	go func() {
-		for {
-			<-time.Tick(time.Second * 1)
-			log.Println("Checks size:", checks)
-		}
-	}()
-
 	<-make(chan bool)
-
 }
