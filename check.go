@@ -15,6 +15,7 @@ import (
 
 var checklist chan Check
 
+// Check contains test for a key, the response from etcd and a stop channel
 type Check struct {
 	test *Test
 	node *client.Response
@@ -61,8 +62,8 @@ func (c Check) makeTest() {
 	}
 }
 
-// getCommand returns a parsed command from configuration.
-func getCommand(cmd string, node *client.Response) (*exec.Cmd, error) {
+// parseCommand returns a parsed command from configuration.
+func parseCommand(cmd string, node *client.Response) (*exec.Cmd, error) {
 
 	tpl, err := template.New("Cmd").Parse(cmd)
 	if err != nil {
@@ -86,7 +87,7 @@ func getCommand(cmd string, node *client.Response) (*exec.Cmd, error) {
 
 func execCommand(command string, node *client.Response) {
 	// create a parsed command
-	cmd, err := getCommand(command, node)
+	cmd, err := parseCommand(command, node)
 	if err != nil {
 		log.Println(err)
 		return
