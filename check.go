@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
-	"strings"
 	"time"
 
 	"github.com/coreos/etcd/client"
@@ -104,13 +103,9 @@ func parseCommand(cmd string, node *client.Response) (*exec.Cmd, error) {
 		return nil, err
 	}
 
-	args := strings.Split(buff.String(), " ")
+	args := []string{"-c", buff.String()}
 
-	if len(args) > 0 {
-		return exec.Command(args[0], args[1:]...), nil
-	}
-
-	return exec.Command(args[0]), nil
+	return exec.Command("sh", args...), nil
 }
 
 func execCommand(command string, node *client.Response) {
