@@ -12,11 +12,9 @@ import (
 	"github.com/coreos/etcd/client"
 )
 
-var checks = map[string]chan bool{}
-
 // Test structure representing the yaml configuration "key".
 type Test struct {
-	Timeout       int
+	Timeout       time.Duration
 	Interval      time.Duration
 	Test          string
 	Value         string
@@ -39,7 +37,10 @@ func (test Test) Init(key string) {
 			return
 		}
 		stop := make(chan bool)
-		checklist <- Check{&test, node, stop}
+		done := make(chan bool)
+		check := Check{&test, node, stop, done, false}
+		go check.up()
+		checkRegistry[node.Node.Key] = check
 	}
 }
 
@@ -58,16 +59,20 @@ func (test Test) Watch(key string) {
 			return
 		}
 
-		if stop, ok := checks[node.Node.Key]; ok {
+		if check, ok := checkRegistry[node.Node.Key]; ok {
 			log.Println("CLEAN checker", node.Node.Key)
-			stop <- true
-			delete(checks, node.Node.Key)
+			check.stop <- true
+			log.Println("DROP from registry", node.Node.Key)
+			delete(checkRegistry, node.Node.Key)
 		}
 
 		if node.Action != "delete" {
 			// prepare and start a check if the key was not deleted
 			stop := make(chan bool)
-			checklist <- Check{&test, node, stop}
+			done := make(chan bool)
+			check := Check{&test, node, stop, done, false}
+			go check.up()
+			checkRegistry[node.Node.Key] = check
 		}
 	}
 }

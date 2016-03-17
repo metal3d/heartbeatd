@@ -13,31 +13,59 @@ import (
 	"github.com/coreos/etcd/client"
 )
 
-var checklist chan Check
+// Check registry to be able to retrieve
+// "stop" channels, keys and so on...
+var checkRegistry = map[string]Check{}
+
+// Channel that recieve check to launch. This channel is
+// made to scale checks and prevent overhead.
+var checkLauncher chan *Check
 
 // Check contains test for a key, the response from etcd and a stop channel
 type Check struct {
-	test *Test
-	node *client.Response
-	stop chan bool
+	test       *Test
+	node       *client.Response
+	stop       chan bool
+	done       chan bool
+	inprogress bool
 }
 
-// up makes periodical test
-func (c Check) up() {
+// up makes periodical test.
+func (c *Check) up() {
 	for {
 		select {
 		case <-c.stop:
-			log.Println("STOP check goroutine", c.node)
+			// We ask to stop test, try to wait a current test then quit.
+			log.Println("STOPPING goroutine", c.node.Node.Key)
+			if c.inprogress {
+				log.Println("WAITING...")
+				select {
+				case <-time.Tick(c.test.Timeout):
+					log.Println("... Timeout")
+				case <-c.done:
+					log.Println("... Done")
+				}
+			}
+			log.Println("STOPPED goroutine", c.node.Node.Key)
 			return
-		case <-time.Tick(c.test.Interval * time.Second):
-			c.makeTest()
+		case <-time.Tick(c.test.Interval):
+			// send test to the stack. Do it when runtime
+			// is not too busy.
+			c.inprogress = true
+			checkLauncher <- c
+			<-c.done
 		}
 	}
 }
 
 // MakeTest launches test.
-func (c Check) makeTest() {
+func (c *Check) makeTest() {
 	var err error
+
+	defer func() {
+		c.inprogress = false
+		c.done <- true
+	}()
 
 	// find a test and execute it
 	if fnc, ok := TESTS[c.test.Test]; ok {
@@ -103,15 +131,13 @@ func execCommand(command string, node *client.Response) {
 
 // initialize the parallels routines
 func setParallel(size int) {
-	checklist = make(chan Check, size)
+	//checklist = make(chan Check, size)
 	runtime.GOMAXPROCS(size)
-	log.Println("Launching", size, "check goroutines")
-	for i := 0; i < size; i++ {
-		go func() {
-			for check := range checklist {
-				checks[check.node.Node.Key] = check.stop
-				check.up()
-			}
-		}()
-	}
+	checkLauncher = make(chan *Check, size)
+	go func() {
+		// as soon as we recieve a check, run it !
+		for c := range checkLauncher {
+			c.makeTest()
+		}
+	}()
 }

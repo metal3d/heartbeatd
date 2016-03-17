@@ -6,16 +6,10 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"gopkg.in/yaml.v2"
 )
-
-type Config struct {
-	Etcd     string          `yaml:"etcd"`
-	Delay    int             `yaml:"delay"`
-	Parallel int             `yaml:"parallel"`
-	Keys     map[string]Test `yaml:"keys"`
-}
 
 var (
 	currentUser, _ = user.Current()
@@ -26,9 +20,60 @@ var (
 	}
 )
 
+type Config struct {
+	Etcd     string
+	Interval time.Duration
+	Parallel int
+	Keys     map[string]*Test
+}
+
+// UnmarshalYAML fixes some initial variables.
+func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var cfg struct {
+		Etcd     string           `yaml:"etcd"`
+		Interval time.Duration    `yaml:"interval"`
+		Parallel int              `yaml:"parallel"`
+		Keys     map[string]*Test `yaml:"keys"`
+	}
+
+	if err := unmarshal(&cfg); err != nil {
+		return err
+	}
+
+	// fixup times to "seconds"
+	if cfg.Interval < 1 {
+		cfg.Interval = 1 * time.Second
+	} else {
+		cfg.Interval = cfg.Interval * time.Second
+	}
+
+	if cfg.Parallel < 2 {
+		cfg.Parallel = runtime.NumCPU() + 1
+	}
+
+	for _, v := range cfg.Keys {
+		if v.Interval < 1 {
+			v.Interval = cfg.Interval
+		} else {
+			v.Interval = v.Interval * time.Second
+		}
+		if v.Timeout < 1 {
+			v.Timeout = cfg.Interval
+		} else {
+			v.Timeout = v.Timeout * time.Second
+		}
+	}
+
+	c.Etcd = cfg.Etcd
+	c.Parallel = cfg.Parallel
+	c.Interval = cfg.Interval
+	c.Keys = cfg.Keys
+	return nil
+}
+
 // LoadConfig read configuration file and return a configuration objet.
 func LoadConfig() *Config {
-	conf := Config{"http://127.0.0.1:4001", 1, runtime.NumCPU(), nil}
+	conf := Config{}
 	for _, p := range CONFIGPATH {
 		if _, err := os.Stat(p); err != nil {
 			content, err := ioutil.ReadFile("config.yml")
