@@ -14,8 +14,8 @@ keys:
         interval: 1
         timeout: 10
         value: "{{.Value}}"
-        command_on_fail: "etcdctl rm {{.Key}}"
-        command_on_success: "echo YES"
+        on_fail: "etcdctl rm {{.Key}}"
+        on_success: "echo YES"
     /bar:
         test: connect
 ```
@@ -55,17 +55,32 @@ The command should be a parsable template. The [client.Reponse.Node](https://god
 # Yaml values:
 
 ```yaml
-etcd: "..." # string http url for the etcd server, default "127.0.0.1:4001"
+etcd: "..." # string http url for the etcd server, default "http://127.0.0.1:4001"
+interval: 1 # default interval between 2 checks
 keys: # map key/test
     /key: #key is the key name to listen
         test: connect|http # at this time, only connect and http
         timeout: 10 # default timeout for http test
         interval: 1 # integer seconds between 2 checks, default 1
         value: "" # template to get value, default {{.Value}}
-        command_on_fail: "..." # command to launch when test fails, default ""
-        command_on_success: "..." # command to laucn when test success, default ""
+        on_fail: "..." # command to launch when test fails, default ""
+        on_success: "..." # command to laucn when test success, default ""
 
     /key1: #...
         test: ...
 ```
+
+You may use several commands in multiline. You must terminate your commands by a coma ";":
+
+```yaml
+#...
+keys:
+    /foo/bar:
+        #...
+        on_success: |
+            command 1 with {{.Key}};
+            command 2 with {{.Value}};
+```
+
+
 
