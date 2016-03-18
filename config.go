@@ -24,16 +24,16 @@ type Config struct {
 	Etcd     string
 	Interval time.Duration
 	Parallel int
-	Keys     map[string]*Test
+	Keys     map[string]*KeyConf
 }
 
 // UnmarshalYAML fixes some initial variables.
 func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var cfg struct {
-		Etcd     string           `yaml:"etcd"`
-		Interval time.Duration    `yaml:"interval"`
-		Parallel int              `yaml:"parallel"`
-		Keys     map[string]*Test `yaml:"keys"`
+		Etcd     string              `yaml:"etcd"`
+		Interval time.Duration       `yaml:"interval"`
+		Parallel int                 `yaml:"parallel"`
+		Keys     map[string]*KeyConf `yaml:"keys"`
 	}
 
 	if err := unmarshal(&cfg); err != nil {

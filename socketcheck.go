@@ -8,7 +8,7 @@ import (
 )
 
 // makeSocketTest tries to open a socket.
-func makeSocketTest(test *Test, node *client.Response) error {
+func makeSocketTest(test *KeyConf, node *client.Response) error {
 
 	value, err := test.parseValue(node)
 	if err != nil {

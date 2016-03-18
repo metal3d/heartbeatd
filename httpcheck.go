@@ -9,7 +9,7 @@ import (
 )
 
 // makeHttpTest tries to get a http url.
-func makeHttpTest(test *Test, node *client.Response) error {
+func makeHttpTest(test *KeyConf, node *client.Response) error {
 
 	value, err := test.parseValue(node)
 	if err != nil {

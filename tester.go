@@ -13,7 +13,7 @@ import (
 )
 
 // Test structure representing the yaml configuration "key".
-type Test struct {
+type KeyConf struct {
 	Timeout       time.Duration
 	Interval      time.Duration
 	Test          string
@@ -23,7 +23,7 @@ type Test struct {
 }
 
 // Init will parse a key recursivally to initialize heartbeat.
-func (test Test) Init(key string) {
+func (keyconf KeyConf) Init(key string) {
 	// initialize a watcher
 	log.Println("Initialize watcher on", key)
 	node, err := KAPI.Get(context.Background(), key, &client.GetOptions{
@@ -32,22 +32,22 @@ func (test Test) Init(key string) {
 	if err == nil {
 		if node.Node.Dir {
 			for _, n := range node.Node.Nodes {
-				test.Init(n.Key)
+				keyconf.Init(n.Key)
 			}
 			return
 		}
 		stop := make(chan bool)
 		done := make(chan bool)
-		check := Check{&test, node, stop, done, false}
+		check := Check{&keyconf, node, stop, done, false}
 		go check.up()
 		checkRegistry[node.Node.Key] = check
 	}
 }
 
 // Watch begins to watch a key and launches tests when a key moves.
-func (test Test) Watch(key string) {
+func (keyconf KeyConf) Watch(key string) {
 	log.Println("Watching key", key)
-	test.Init(key)
+	keyconf.Init(key)
 	watcher := KAPI.Watcher(key, &client.WatcherOptions{
 		Recursive: true,
 	})
@@ -70,7 +70,7 @@ func (test Test) Watch(key string) {
 			// prepare and start a check if the key was not deleted
 			stop := make(chan bool)
 			done := make(chan bool)
-			check := Check{&test, node, stop, done, false}
+			check := Check{&keyconf, node, stop, done, false}
 			go check.up()
 			checkRegistry[node.Node.Key] = check
 		}
@@ -78,8 +78,8 @@ func (test Test) Watch(key string) {
 }
 
 // parseValue returns the parsed config test value template.
-func (t Test) parseValue(node *client.Response) (string, error) {
-	value := t.Value
+func (keyconf KeyConf) parseValue(node *client.Response) (string, error) {
+	value := keyconf.Value
 	if len(strings.TrimSpace(value)) == 0 {
 		value = "{{.Value}}"
 	}

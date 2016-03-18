@@ -22,7 +22,7 @@ var checkLauncher chan *Check
 
 // Check contains test for a key, the response from etcd and a stop channel
 type Check struct {
-	test       *Test
+	conf       *KeyConf
 	node       *client.Response
 	stop       chan bool
 	done       chan bool
@@ -39,7 +39,7 @@ func (c *Check) up() {
 			if c.inprogress {
 				log.Println("WAITING...")
 				select {
-				case <-time.Tick(c.test.Timeout):
+				case <-time.Tick(c.conf.Timeout):
 					log.Println("... Timeout")
 				case <-c.done:
 					log.Println("... Done")
@@ -47,7 +47,7 @@ func (c *Check) up() {
 			}
 			log.Println("STOPPED goroutine", c.node.Node.Key)
 			return
-		case <-time.Tick(c.test.Interval):
+		case <-time.Tick(c.conf.Interval):
 			// send test to the stack. Do it when runtime
 			// is not too busy.
 			c.inprogress = true
@@ -67,25 +67,25 @@ func (c *Check) makeTest() {
 	}()
 
 	// find a test and execute it
-	if fnc, ok := TESTS[c.test.Test]; ok {
-		err = fnc(c.test, c.node)
+	if fnc, ok := TESTS[c.conf.Test]; ok {
+		err = fnc(c.conf, c.node)
 	} else {
-		log.Println(c.test.Test, "is not a known test")
+		log.Println(c.conf.Test, "is not a known test")
 		return
 	}
 
 	if err != nil {
 		//w.kapi.Delete(context.Background(), node.Node.Key, nil)
-		if c.test.CommandFailed == "" {
+		if c.conf.CommandFailed == "" {
 			log.Println("No command for failed state specified")
 			return
 		}
-		execCommand(c.test.CommandFailed, c.node)
+		execCommand(c.conf.CommandFailed, c.node)
 	} else {
-		if c.test.CommandOK == "" {
+		if c.conf.CommandOK == "" {
 			return
 		}
-		execCommand(c.test.CommandOK, c.node)
+		execCommand(c.conf.CommandOK, c.node)
 	}
 }
 
