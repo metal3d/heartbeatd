@@ -16,8 +16,8 @@ import (
 // "stop" channels, keys and so on...
 var checkRegistry = map[string]Check{}
 
-// Channel that recieve check to launch. This channel is
-// made to scale checks and prevent overhead.
+// Channel that recieves "Checks" to launch. This channel is
+// made to scale checks and prevent overhead. See setParallel().
 var checkLauncher chan *Check
 
 // Check contains test for a key, the response from etcd and a stop channel

@@ -18,8 +18,8 @@ type Test struct {
 	Interval      time.Duration
 	Test          string
 	Value         string
-	CommandFailed string `yaml:"command_on_fail"`
-	CommandOK     string `yaml:"command_on_success"`
+	CommandFailed string `yaml:"on_fail"`
+	CommandOK     string `yaml:"on_success"`
 }
 
 // Init will parse a key recursivally to initialize heartbeat.
